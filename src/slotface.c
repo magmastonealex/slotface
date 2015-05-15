@@ -1,57 +1,208 @@
 #include <pebble.h>
 
 static Window *window;
-static TextLayer *text_layer;
+static Layer *text_layer;
 static InverterLayer *iLayer1;
 static Layer *faceLayer;
-static GBitmap * map;
-static BitmapLayer * bLayer;
+static Layer *tmpLayer;
+static Layer *mdLayer;
+static void * x;
+static GBitmap * map2;
+#define CLOCK_RADIUS 65
+
+static void graphics_draw_line2(GContext *ctx, GPoint p0, GPoint p1, int8_t width) {
+  // Order points so that lower x is first
+  int16_t x0, x1, y0, y1;
+  if (p0.x <= p1.x) {
+    x0 = p0.x; x1 = p1.x; y0 = p0.y; y1 = p1.y;
+  } else {
+    x0 = p1.x; x1 = p0.x; y0 = p1.y; y1 = p0.y;
+  }
+  
+  // Init loop variables
+  int16_t dx = x1-x0;
+  int16_t dy = abs(y1-y0);
+  int16_t sy = y0<y1 ? 1 : -1; 
+  int16_t err = (dx>dy ? dx : -dy)/2;
+  int16_t e2;
+  
+  // Calculate whether line thickness will be added vertically or horizontally based on line angle
+  int8_t xdiff, ydiff;
+  
+  if (dx > dy) {
+    xdiff = 0;
+    ydiff = width/2;
+  } else {
+    xdiff = width/2;
+    ydiff = 0;
+  }
+  
+  // Use Bresenham's integer algorithm, with slight modification for line width, to draw line at any angle
+  while (true) {
+    // Draw line thickness at each point by drawing another line 
+    // (horizontally when > +/-45 degrees, vertically when <= +/-45 degrees)
+    graphics_draw_line(ctx, GPoint(x0-xdiff, y0-ydiff), GPoint(x0+xdiff, y0+ydiff));
+    
+    if (x0==x1 && y0==y1) break;
+    e2 = err;
+    if (e2 >-dx) { err -= dy; x0++; }
+    if (e2 < dy) { err += dx; y0 += sy; }
+  }
+}
 
 static void my_layer_draw(Layer *layeer, GContext *ctx) {
- graphics_context_set_compositing_mode(ctx,GCompOpClear);
- graphics_context_set_fill_color(ctx,GColorWhite);
- graphics_fill_rect(ctx,GRect(0,0,144,168),0,GCornerNone);
+  graphics_context_set_compositing_mode(ctx,GCompOpSet);
+
+
+
+ GBitmap * tmp = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_TEMP);
+ void *tmpDat;
+ tmpDat=tmp->addr;
+ tmp->addr=x;
+ graphics_draw_bitmap_in_rect(ctx,tmp,layer_get_bounds(layeer));
+ tmp->addr=tmpDat;
+ gbitmap_destroy(tmp);
+ free(x);
+ 
  graphics_context_set_fill_color(ctx,GColorBlack);
  graphics_context_set_stroke_color(ctx,GColorBlack);
- graphics_fill_circle(ctx,GPoint(40,30),40);
 
-// map=graphics_capture_frame_buffer(ctx);
- //bitmap_layer_set_bitmap(bLayer,map);
-// graphics_release_frame_buffer(ctx,map);
+time_t now = time(NULL);
+struct tm *t = localtime(&now);
 
- graphics_context_set_fill_color(ctx,GColorWhite);
- graphics_fill_rect(ctx,GRect(0,0,144,168),0,GCornerNone);
+ int32_t minuteHandLength=70;
+ int32_t minute_angle = TRIG_MAX_ANGLE * t->tm_min / 60;
+ int y = (-cos_lookup(minute_angle) * minuteHandLength / TRIG_MAX_RATIO) + 84;
+ int xc = (sin_lookup(minute_angle) * minuteHandLength / TRIG_MAX_RATIO) + 72;
+ graphics_draw_line2(ctx,GPoint(72,84), GPoint(xc, y),3);
+
+ int32_t secondHandLength=60;
+ int32_t second_angle = TRIG_MAX_ANGLE * t->tm_sec / 60;
+ y = (-cos_lookup(second_angle) * secondHandLength / TRIG_MAX_RATIO) + 84;
+ xc = (sin_lookup(second_angle) * secondHandLength / TRIG_MAX_RATIO) + 72;
+ graphics_draw_line(ctx,GPoint(72,84), GPoint(xc, y));
+
+ for (int z = 1; z < 13; z++) {
+    int32_t mydot_angle = (TRIG_MAX_ANGLE / 12 * z);
+    y = (-cos_lookup(mydot_angle) * CLOCK_RADIUS / TRIG_MAX_RATIO) + 84;
+    xc = (sin_lookup(mydot_angle) * CLOCK_RADIUS / TRIG_MAX_RATIO) + 72;
+    graphics_fill_circle(ctx, GPoint((int)xc, (int)y), 1);
 }
+
+}
+
+
+
+static void bottom_layer_draw(Layer *layeer, GContext *ctx){
+  graphics_context_set_fill_color(ctx,GColorBlack);
+  graphics_fill_rect(ctx,GRect(0,0,144,168),0,GCornerNone);
+  graphics_context_set_fill_color(ctx,GColorWhite);
+  graphics_context_set_stroke_color(ctx,GColorWhite);
+
+time_t now = time(NULL);
+struct tm *t = localtime(&now);
+int32_t hourHandLength=65;
+int32_t hour_angle = (TRIG_MAX_ANGLE * (((t->tm_hour % 12) * 6) + (t->tm_min / 10))) / (12 * 6);
+//int32_t hour_angle = TRIG_MAX_ANGLE * t->tm_sec / 60;
+int y = (-cos_lookup(hour_angle) * hourHandLength / TRIG_MAX_RATIO) + 84;
+int xc = (sin_lookup(hour_angle) * hourHandLength / TRIG_MAX_RATIO) + 72;
+graphics_draw_line2(ctx,GPoint(72,84), GPoint(xc, y),15);
+
+  graphics_fill_circle(ctx, GPoint(xc, y),   6 );
+  graphics_fill_circle(ctx, GPoint(72, 84),  6 );
+
+ // graphics_fill_rect(ctx,GRect(0,0,50,40),0,GCornerNone);
+  map2=graphics_capture_frame_buffer(ctx);
+
+  int rsb = map2->row_size_bytes;
+  int hgt = map2->bounds.size.h;
+  x = malloc(hgt*rsb);
+  memcpy(x,map2->addr,rsb*hgt);
+  graphics_release_frame_buffer(ctx,map2);
+  layer_mark_dirty(faceLayer);
+}
+static void blank_layer_draw(Layer *layeer, GContext *ctx){
+    graphics_context_set_fill_color(ctx,GColorWhite);
+  graphics_fill_rect(ctx,GRect(0,0,144,168),0,GCornerNone);
+}
+
+static char * itoa10 (int value, char *result)
+{
+    char const digit[] = "0123456789";
+    char *p = result;
+    if (value < 0) {
+        *p++ = '-';
+        value *= -1;
+    }
+
+    /* move number of required chars and null terminate */
+    int shift = value;
+    do {
+        ++p;
+        shift /= 10;
+    } while (shift);
+    *p = '\0';
+
+    /* populate result in reverse order */
+    do {
+        *--p = digit [value % 10];
+        value /= 10;
+    } while (value);
+
+    return result;
+}
+
+static void text_layer_draw(Layer *layeer, GContext *ctx){
+  graphics_context_set_fill_color(ctx,GColorWhite);
+  graphics_context_set_stroke_color(ctx,GColorWhite);
+  char* tbuf = malloc(3);
+ for (int z = 1; z < 13; z++) {
+    tbuf=itoa10(z,tbuf);
+
+    int32_t mydot_angle = (TRIG_MAX_ANGLE / 12 * z);
+
+    GSize sz = graphics_text_layout_get_content_size(tbuf, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),GRect(0,0,30,40),GTextOverflowModeFill,GTextAlignmentLeft);
+    int xoff=sz.w/2.0;
+    int yoff=sz.h/2.0;
+    int y = (-cos_lookup(mydot_angle) * CLOCK_RADIUS / TRIG_MAX_RATIO) + 79 - yoff;
+    int xc = (sin_lookup(mydot_angle) * CLOCK_RADIUS / TRIG_MAX_RATIO) + 72 - xoff;
+    graphics_draw_text(ctx,tbuf, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),GRect(xc,y,30,40),GTextOverflowModeFill,GTextAlignmentLeft,NULL);
+}
+  free(tbuf);
+}
+
+
 
 static void window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
 
   iLayer1=inverter_layer_create(GRect(0, 0, 144, 168));
-  text_layer=text_layer_create(GRect(40, 30, 90, 100));
-  text_layer_set_text(text_layer, "10");
-  text_layer_set_background_color(text_layer,GColorClear);
-  text_layer_set_text_color(text_layer,GColorWhite);
+
   
 
   faceLayer=layer_create(GRect(0, 0, 144, 168));
+  tmpLayer=layer_create(GRect(0, 0, 144, 168));
+  mdLayer=layer_create(GRect(0, 0, 144, 168));
+  text_layer=layer_create(GRect(0, 0, 144, 168));
 
+  layer_set_update_proc(tmpLayer, bottom_layer_draw);
+  layer_set_update_proc(mdLayer, blank_layer_draw);
   layer_set_update_proc(faceLayer, my_layer_draw);
-       
-//  map= __gbitmap_create_blank(GSize(144,168));
-  map=gbitmap_create_with_resource(RESOURCE_ID_IMAGE_TEMP);
-  bLayer = bitmap_layer_create(GRect(0,0,144,168));
-  bitmap_layer_set_compositing_mode(bLayer,GCompOpSet);
-  bitmap_layer_set_bitmap(bLayer,map);
-  layer_add_child(window_layer, faceLayer);
+  layer_set_update_proc(text_layer, text_layer_draw);
 
-  layer_add_child(faceLayer,inverter_layer_get_layer(iLayer1));
 
-  layer_add_child(inverter_layer_get_layer(iLayer1),text_layer_get_layer(text_layer));
-  layer_add_child(inverter_layer_get_layer(iLayer1),bitmap_layer_get_layer(bLayer));
+  layer_add_child(window_layer, tmpLayer);
+  layer_add_child(tmpLayer,mdLayer);
+  layer_add_child(mdLayer,inverter_layer_get_layer(iLayer1));
+  layer_add_child(inverter_layer_get_layer(iLayer1),text_layer);
+  layer_add_child(inverter_layer_get_layer(iLayer1),faceLayer);
 }
 
 static void window_unload(Window *window) {
-  text_layer_destroy(text_layer);
+
+}
+static void tick_handler(struct tm *tick_time, TimeUnits units_changed){
+  layer_mark_dirty(tmpLayer);
 }
 
 static void init(void) {
@@ -62,6 +213,9 @@ static void init(void) {
   });
   const bool animated = true;
   window_stack_push(window, animated);
+
+  tick_timer_service_subscribe(SECOND_UNIT, tick_handler);
+
 }
 
 static void deinit(void) {
