@@ -3,6 +3,7 @@
 static Window *window;
 static Layer *text_layer;
 static InverterLayer *iLayer1;
+static InverterLayer *iLayer;
 static Layer *faceLayer;
 static Layer *tmpLayer;
 static Layer *mdLayer;
@@ -50,8 +51,60 @@ static void graphics_draw_line2(GContext *ctx, GPoint p0, GPoint p1, int8_t widt
   }
 }
 
+
+static void inbox_received_callback(DictionaryIterator *iterator, void *context) {
+  Tuple *t = dict_read_first(iterator);
+
+  // Process all pairs present
+  while(t != NULL) {
+    // Process this pair's key
+    persist_write_int(t->key, t->value->int32);
+
+    // Get next pair, if any
+    t = dict_read_next(iterator);
+  }
+  layer_mark_dirty(window_get_root_layer(window));
+}
+
+static void inbox_dropped_callback(AppMessageResult reason, void *context) {
+  APP_LOG(APP_LOG_LEVEL_ERROR, "Message dropped!");
+}
+
+static void outbox_failed_callback(DictionaryIterator *iterator, AppMessageResult reason, void *context) {
+  APP_LOG(APP_LOG_LEVEL_ERROR, "Outbox send failed!");
+}
+
+static void outbox_sent_callback(DictionaryIterator *iterator, void *context) {
+  APP_LOG(APP_LOG_LEVEL_INFO, "Outbox send success!");
+}
+
+
+
 static void my_layer_draw(Layer *layeer, GContext *ctx) {
   graphics_context_set_compositing_mode(ctx,GCompOpSet);
+
+
+  int invertq = 0;
+  int faceC=0;
+  int faceD=0;
+  if (persist_exists(0)) {
+    invertq = persist_read_int(0);
+  }
+  if (persist_exists(1)) {
+    faceC = persist_read_int(1);
+  }
+  if (persist_exists(2)) {
+    faceD = persist_read_int(2);
+  }
+
+  if(invertq!=0){
+    layer_set_hidden(inverter_layer_get_layer(iLayer),true);
+  }else{
+    layer_set_hidden(inverter_layer_get_layer(iLayer),false);
+  }
+  if(faceC != 0){
+    graphics_draw_circle(ctx,GPoint(72,84),60);
+  }
 
 
 
@@ -81,12 +134,14 @@ struct tm *t = localtime(&now);
  y = (-cos_lookup(second_angle) * secondHandLength / TRIG_MAX_RATIO) + 84;
  xc = (sin_lookup(second_angle) * secondHandLength / TRIG_MAX_RATIO) + 72;
  graphics_draw_line(ctx,GPoint(72,84), GPoint(xc, y));
-
+if(faceD != 0){
  for (int z = 1; z < 13; z++) {
     int32_t mydot_angle = (TRIG_MAX_ANGLE / 12 * z);
     y = (-cos_lookup(mydot_angle) * CLOCK_RADIUS / TRIG_MAX_RATIO) + 84;
     xc = (sin_lookup(mydot_angle) * CLOCK_RADIUS / TRIG_MAX_RATIO) + 72;
     graphics_fill_circle(ctx, GPoint((int)xc, (int)y), 1);
+}
+
 }
 
 }
@@ -99,14 +154,14 @@ static void bottom_layer_draw(Layer *layeer, GContext *ctx){
   graphics_context_set_fill_color(ctx,GColorWhite);
   graphics_context_set_stroke_color(ctx,GColorWhite);
 
-time_t now = time(NULL);
-struct tm *t = localtime(&now);
-int32_t hourHandLength=65;
-int32_t hour_angle = (TRIG_MAX_ANGLE * (((t->tm_hour % 12) * 6) + (t->tm_min / 10))) / (12 * 6);
-//int32_t hour_angle = TRIG_MAX_ANGLE * t->tm_sec / 60;
-int y = (-cos_lookup(hour_angle) * hourHandLength / TRIG_MAX_RATIO) + 84;
-int xc = (sin_lookup(hour_angle) * hourHandLength / TRIG_MAX_RATIO) + 72;
-graphics_draw_line2(ctx,GPoint(72,84), GPoint(xc, y),15);
+  time_t now = time(NULL);
+  struct tm *t = localtime(&now);
+  int32_t hourHandLength=65;
+  int32_t hour_angle = (TRIG_MAX_ANGLE * (((t->tm_hour % 12) * 6) + (t->tm_min / 10))) / (12 * 6);
+  //int32_t hour_angle = TRIG_MAX_ANGLE * t->tm_sec / 60;
+  int y = (-cos_lookup(hour_angle) * hourHandLength / TRIG_MAX_RATIO) + 84;
+  int xc = (sin_lookup(hour_angle) * hourHandLength / TRIG_MAX_RATIO) + 72;
+  graphics_draw_line2(ctx,GPoint(72,84), GPoint(xc, y),15);
 
   graphics_fill_circle(ctx, GPoint(xc, y),   6 );
   graphics_fill_circle(ctx, GPoint(72, 84),  6 );
@@ -122,7 +177,7 @@ graphics_draw_line2(ctx,GPoint(72,84), GPoint(xc, y),15);
   layer_mark_dirty(faceLayer);
 }
 static void blank_layer_draw(Layer *layeer, GContext *ctx){
-    graphics_context_set_fill_color(ctx,GColorWhite);
+  graphics_context_set_fill_color(ctx,GColorWhite);
   graphics_fill_rect(ctx,GRect(0,0,144,168),0,GCornerNone);
 }
 
@@ -177,6 +232,7 @@ static void window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
 
   iLayer1=inverter_layer_create(GRect(0, 0, 144, 168));
+  iLayer = inverter_layer_create(GRect(0, 0, 144, 168));
 
   
 
@@ -195,10 +251,17 @@ static void window_load(Window *window) {
   layer_add_child(tmpLayer,mdLayer);
   layer_add_child(mdLayer,inverter_layer_get_layer(iLayer1));
   layer_add_child(inverter_layer_get_layer(iLayer1),text_layer);
-  layer_add_child(inverter_layer_get_layer(iLayer1),faceLayer);
+  layer_add_child(text_layer,faceLayer);
+  layer_add_child(faceLayer,inverter_layer_get_layer(iLayer));
+
 }
 
 static void window_unload(Window *window) {
+  layer_destroy(faceLayer);
+  layer_destroy(text_layer);
+  inverter_layer_destroy(iLayer1);
+  layer_destroy(mdLayer);
+  layer_destroy(tmpLayer);
 
 }
 static void tick_handler(struct tm *tick_time, TimeUnits units_changed){
@@ -215,6 +278,14 @@ static void init(void) {
   window_stack_push(window, animated);
 
   tick_timer_service_subscribe(SECOND_UNIT, tick_handler);
+
+
+app_message_register_inbox_received(inbox_received_callback);
+app_message_register_inbox_dropped(inbox_dropped_callback);
+app_message_register_outbox_failed(outbox_failed_callback);
+app_message_register_outbox_sent(outbox_sent_callback);
+
+app_message_open(app_message_inbox_size_maximum(), app_message_outbox_size_maximum());
 
 }
 

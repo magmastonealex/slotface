@@ -3,6 +3,7 @@
   "shortName": "slotface",
   "longName": "slotface",
   "companyName": "MagmaStone",
+  "capabilities": [ "configurable" ],
   "versionCode": 1,
   "versionLabel": "1.0",
   "watchapp": {
