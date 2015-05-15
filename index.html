@@ -18,16 +18,7 @@
 </div>
 </div>
 
-<br>
-<br>
-<div class="row">
-<div class="checkbox">
-  <label id="fCircle" >
-    <input id="fCircleB"  type="checkbox" value="">
-    Face Circle
-  </label>
-</div>
-</div>
+
 
 <br>
 <br>
@@ -53,7 +44,7 @@
 <script>
 $(document).ready(function(){
 	inv=localStorage.getItem("inverted");
-	faceC=localStorage.getItem("faceCircle");
+	localStorage.setItem("faceCircle","F");
 	faceD=localStorage.getItem("faceDots");
 	if(inv != null){
 		if(inv=="T"){
@@ -64,14 +55,7 @@ $(document).ready(function(){
 
 		localStorage.setItem("inverted","F");
 	}
-	if(faceC != null){
-		if(faceC=="T"){
-			$("#fCircleB").addClass('active');
-			$("#fCircleB").prop("checked",true);
-		}
-	}else{
-		localStorage.setItem("faceCircle","F");
-	}
+
 	if(faceD != null){
 		if(faceD=="T"){
 			$("#fDotsB").addClass('active');
@@ -80,14 +64,7 @@ $(document).ready(function(){
 	}else{
 		localStorage.setItem("faceDots","F");
 	}
-	$("#fCircle").click(function(){
-		console.log("here?");
-		if( $("#fCircleB").prop("checked") ){
-			localStorage.setItem("faceCircle","T");
-		}else{
-			localStorage.setItem("faceCircle","F");
-		}
-	});
+	
 	$("#fDots").click(function(){
 		console.log("here?");
 		if( $("#fDotsB").prop("checked") ){
