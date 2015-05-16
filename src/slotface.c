@@ -151,6 +151,8 @@ if(faceD != 0){
 static void bottom_layer_draw(Layer *layeer, GContext *ctx){
   graphics_context_set_fill_color(ctx,GColorBlack);
   graphics_fill_rect(ctx,GRect(0,0,144,168),0,GCornerNone);
+
+
   graphics_context_set_fill_color(ctx,GColorWhite);
   graphics_context_set_stroke_color(ctx,GColorWhite);
 
@@ -211,6 +213,9 @@ static void text_layer_draw(Layer *layeer, GContext *ctx){
   graphics_context_set_fill_color(ctx,GColorWhite);
   graphics_context_set_stroke_color(ctx,GColorWhite);
   char* tbuf = malloc(3);
+  GBitmap * tmp = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_TEMP);
+  graphics_draw_bitmap_in_rect(ctx,tmp,layer_get_bounds(layeer));
+  gbitmap_destroy(tmp);
  for (int z = 1; z < 13; z++) {
     tbuf=itoa10(z,tbuf);
 
